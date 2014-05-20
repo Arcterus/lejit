@@ -16,6 +16,7 @@ macro_rules! jit_asm (
 				)*
 				func.push(op_asm!($op $(,$operands)*));
 			)*
+			func.end();
 		)+
 	})
 )

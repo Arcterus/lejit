@@ -56,6 +56,10 @@ impl JitFunction {
 	pub fn label(&mut self, name: ~str) {
 		self.sublabels.push(JitLabel::new(name, self.ops.len()));
 	}
+
+	pub fn end(&mut self) {
+		self.ops.push(Ret);
+	}
 }
 
 impl JitLabel {

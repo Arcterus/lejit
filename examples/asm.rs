@@ -15,14 +15,13 @@ fn main() {
 	jit_asm!(jit,
 		fn add_four:
 			Movrr R1, R2;
-			Addi R1, 4;
-			Ret
+			Addi R1, 4
 	);
 	let code = jit.compile();
 	/*let func = jit.function("add_four".to_owned());
 	func.push(Movrr(R1, R2));
 	func.push(Addi(R1, 4));
-	func.push(Ret);
+	func.end();
 	let code = func.compile();*/
 
 	let mut region = match os::MemoryMap::new(code.len(), [os::MapReadable, os::MapWritable]) {
