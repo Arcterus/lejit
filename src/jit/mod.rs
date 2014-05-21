@@ -99,7 +99,7 @@ impl<'a> Jit<'a> {
 		region.copy(code);
 		region.protect();
 		region
-	} 
+	}
 }
 
 impl<'a> JitFunction<'a> {
