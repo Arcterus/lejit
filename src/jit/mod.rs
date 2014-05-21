@@ -3,14 +3,16 @@ pub use self::x86_64::Jit;
 
 pub mod x86_64;
 
-pub trait Compilable {
-	fn compile(&self) -> ~[u8];
+pub trait Compilable<'a> {
+	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> ~[u8];
 }
 
-pub enum JitOp {
-	Addi(JitReg, uint),
-	Subi(JitReg, uint),
+pub enum JitOp<'a> {
+	Addri(JitReg, u64),
+	Subri(JitReg, u64),
 	Movrr(JitReg, JitReg),
+	Movri(JitReg, u64),
+	Call(&'a str),
 	Ret
 }
 
@@ -29,10 +31,10 @@ pub enum JitReg {
 	R12
 }
 
-pub struct JitFunction {
+pub struct JitFunction<'a> {
 	pub label: JitLabel,
 	pub sublabels: Vec<JitLabel>,
-	pub ops: Vec<JitOp>
+	pub ops: Vec<JitOp<'a>>
 }
 
 pub struct JitLabel {
@@ -40,8 +42,8 @@ pub struct JitLabel {
 	pos: uint
 }
 
-impl JitFunction {
-	pub fn new(name: ~str, pos: uint) -> JitFunction {
+impl<'a> JitFunction<'a> {
+	pub fn new(name: ~str, pos: uint) -> JitFunction<'a> {
 		JitFunction {
 			label: JitLabel::new(name, pos),
 			sublabels: vec!(),
@@ -49,7 +51,7 @@ impl JitFunction {
 		}
 	}
 
-	pub fn push(&mut self, op: JitOp) {
+	pub fn push(&mut self, op: JitOp<'a>) {
 		self.ops.push(op);
 	}
 
@@ -59,6 +61,14 @@ impl JitFunction {
 
 	pub fn end(&mut self) {
 		self.ops.push(Ret);
+	}
+
+	pub fn len(&self) -> uint {
+		let mut len = 0;
+		for op in self.ops.iter() {
+			len += op.len();
+		}
+		len
 	}
 }
 

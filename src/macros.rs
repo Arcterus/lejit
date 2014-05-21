@@ -8,7 +8,7 @@
 #[macro_export]
 macro_rules! jit_asm (
 	($jit:ident, $(fn $flabel:ident : $($(. $sublabel:ident :)* $op:path $($operands:expr),*);*)+) => ({
-		$(
+		$({
 			let func = $jit.function(stringify!($flabel).to_owned());
 			$(
 				$(
@@ -17,7 +17,7 @@ macro_rules! jit_asm (
 				func.push(op_asm!($op $(,$operands)*));
 			)*
 			func.end();
-		)+
+		})+
 	})
 )
 

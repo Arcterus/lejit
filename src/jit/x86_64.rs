@@ -1,13 +1,12 @@
+use std::{u8, u16, u32, u64};
 use std::vec::FromVec;
 use super::{Compilable, JitFunction, JitLabel, JitOp, JitReg};
 
-pub static REXW: u8 = 0x48;
-pub static ADDRI: [u8, ..2] = [REXW, 0x83];
-pub static MOVRR: [u8, ..2] = [REXW, 0x89];
-pub static RET: u8 = 0xc3;
+//static REXW: u8 = 0x48;
+static RET: u8 = 0xc3;
 
 pub struct Jit<'a> {
-	funcs: Vec<JitFunction>
+	funcs: Vec<JitFunction<'a>>
 }
 
 impl<'a> Jit<'a> {
@@ -17,49 +16,145 @@ impl<'a> Jit<'a> {
 		}
 	}
 
-	pub fn function(&'a mut self, name: ~str) -> &'a mut JitFunction {
+	pub fn function<'x>(&'x mut self, name: ~str) -> &'x mut JitFunction<'a> {
 		let len = self.funcs.len();
 		let func = JitFunction::new(name, if self.funcs.is_empty() {
 			0
 		} else {
 			let oldfn = self.funcs.get(len - 1);
-			oldfn.label.pos + oldfn.ops.len()
+			oldfn.label.pos + oldfn.len()
 		});
 		self.funcs.push(func);
 		self.funcs.get_mut(len)
 	}
-}
 
-impl<'a> Compilable for Jit<'a> {
-	fn compile(&self) -> ~[u8] {
-		let mut vec = vec!();
+	pub fn find_function(&'a self, name: &str) -> Option<&'a JitFunction<'a>> {
+		// TODO: redesign so don't have to iterate through an array
 		for func in self.funcs.iter() {
-			vec.push_all(func.compile());
+			let fname: &str = func.label.name;
+			if fname == name {
+				return Some(func);
+			}
 		}
-		FromVec::from_vec(vec)
+		None
 	}
-}
 
-impl Compilable for JitFunction {
-	fn compile(&self) -> ~[u8] {
+	pub fn compile(&'a self) -> ~[u8] {
 		let mut vec = vec!();
-		for op in self.ops.iter() {
-			let comp = op.compile();
-			println!("{}", comp);
+		let mut pos = 0;
+		for func in self.funcs.iter() {
+			let comp = func.compile(self, pos);
+			pos += comp.len();
 			vec.push_all(comp);
 		}
 		FromVec::from_vec(vec)
 	}
 }
 
-impl Compilable for JitOp {
-	fn compile(&self) -> ~[u8] {
-		match *self {
-			super::Addi(reg, imm) => FromVec::from_vec(Vec::from_slice(ADDRI).append([(0b11 << 6) + reg.to_real_reg(), imm as u8])),
-			super::Movrr(reg1, reg2) => FromVec::from_vec(Vec::from_slice(MOVRR).append([(0b11 << 6) + (reg2.to_real_reg() << 3) + reg1.to_real_reg() as u8])),
-			super::Ret => ~[RET],
-			_ => fail!() // TODO: implement all ops
+impl<'a> Compilable<'a> for JitFunction<'a> {
+	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> ~[u8] {
+		let mut vec = vec!();
+		let mut pos = pos;
+		for op in self.ops.iter() {
+			let comp = op.compile(jit, pos);
+			println!("{}", comp);
+			pos += comp.len();
+			vec.push_all(comp);
 		}
+		FromVec::from_vec(vec)
+	}
+}
+
+impl<'a> super::JitOp<'a> {
+	pub fn len(&self) -> uint {
+		match *self {
+			super::Addri(_, imm) | super::Subri(_, imm) =>
+				if needed_bytes(imm) == 1 {
+					4
+				} else {
+					7 // TODO: account for 4
+				},
+			super::Movrr(_, _) => 3,
+			super::Movri(_, imm) => match imm {
+				1 | 2 | 3 => 5,
+				_ => 9
+			},
+			super::Call(_) => 5,
+			super::Ret => 1
+		}
+	}
+}
+
+impl<'a> Compilable<'a> for JitOp<'a> {
+	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> ~[u8] {
+		match *self {
+			super::Addri(reg, imm) => encode_addri(reg, imm),
+			super::Subri(reg, imm) => encode_subri(reg, imm),
+			super::Movrr(reg1, reg2) => ~[0x48, 0x89, (0b11 << 6) + (reg2.to_real_reg() << 3) + reg1.to_real_reg() as u8],
+			super::Movri(reg, imm) => encode_movri(reg, imm),
+			super::Call(name) => encode_call(jit.find_function(name), pos),
+			super::Ret => ~[RET],
+			//_ => fail!() // TODO: implement all ops
+		}
+	}
+}
+
+#[inline(always)]
+fn encode_addri(reg: super::JitReg, imm: u64) -> ~[u8] {
+	match needed_bytes(imm) {
+		1 => ~[0x48, 0x83, (0b11 << 6) + reg.to_real_reg(), imm as u8],
+		2 | 3 => ~[0x48, 0x81, (0b11 << 6) + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8],
+		4 => fail!(), // TODO: should mov and then add
+		_ => unreachable!()
+	}
+}
+
+#[inline(always)]
+fn encode_subri(reg: super::JitReg, imm: u64) -> ~[u8] {
+	match needed_bytes(imm) {
+		1 => ~[0x48, 0x83, (0b11 << 6) + (0b101 << 3) + reg.to_real_reg(), imm as u8],
+		2 | 3 => ~[0x48, 0x81, (0b11 << 6) + (0b101 << 3) + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8],
+		4 => fail!(), // TODO: should mov and then add
+		_ => unreachable!()
+	}
+}
+
+#[inline(always)]
+fn encode_movri(reg: super::JitReg, imm: u64) -> ~[u8] {
+	match needed_bytes(imm) {
+		1 | 2 | 3 => ~[0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8],
+		4 => ~[0x48, 0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8, (imm >> 32) as u8, (imm >> 40) as u8, (imm >> 48) as u8, (imm >> 56) as u8],
+		_ => unreachable!()
+	}
+}
+
+#[inline(always)]
+fn encode_call<'a>(func: Option<&'a JitFunction<'a>>, pos: uint) -> ~[u8] {
+	match func {
+		Some(func) => {
+			let mut pos = func.label.pos as i32 - pos as i32;
+			if pos > 0 {
+				pos -= 5;
+			}
+			// 2's complement
+			~[0xe8, pos as u8, (pos >> 8) as u8, (pos >> 16) as u8, (pos >> 24) as u8]
+		}
+		None => fail!() // XXX: fix
+	}
+}
+
+#[inline(always)]
+fn needed_bytes(num: u64) -> uint {
+	if num <= u8::MAX as u64 {
+		1
+	} else if num <= u16::MAX as u64 {
+		2
+	} else if num <= u32::MAX as u64 {
+		3
+	} else if num <= u64::MAX {
+		4
+	} else {
+		unreachable!()
 	}
 }
 
@@ -73,4 +168,3 @@ impl super::JitReg {
 	}
 }
 
-//unsafe fn jit_func<T>()
