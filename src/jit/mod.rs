@@ -1,7 +1,10 @@
-#[cfg(target_arch = "x86_64")]
-pub use self::x86_64::Jit;
+use std::vec::FromVec;
+use std::os;
+use region::MemoryRegion;
 
-pub mod x86_64;
+#[cfg(target_arch = "x86_64")]
+#[path = "x86_64.rs"]
+pub mod backend;
 
 pub trait Compilable<'a> {
 	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> ~[u8];
@@ -31,6 +34,10 @@ pub enum JitReg {
 	R12
 }
 
+pub struct Jit<'a> {
+	funcs: Vec<JitFunction<'a>>
+}
+
 pub struct JitFunction<'a> {
 	pub label: JitLabel,
 	pub sublabels: Vec<JitLabel>,
@@ -40,6 +47,59 @@ pub struct JitFunction<'a> {
 pub struct JitLabel {
 	name: ~str,
 	pos: uint
+}
+
+impl<'a> Jit<'a> {
+	pub fn new() -> Jit<'a> {
+		Jit {
+			funcs: vec!()
+		}
+	}
+
+	pub fn function<'x>(&'x mut self, name: ~str) -> &'x mut JitFunction<'a> {
+		let len = self.funcs.len();
+		let func = JitFunction::new(name, if self.funcs.is_empty() {
+			0
+		} else {
+			let oldfn = self.funcs.get(len - 1);
+			oldfn.label.pos + oldfn.len()
+		});
+		self.funcs.push(func);
+		self.funcs.get_mut(len)
+	}
+
+	pub fn find_function(&'a self, name: &str) -> Option<&'a JitFunction<'a>> {
+		// TODO: redesign so don't have to iterate through an array
+		for func in self.funcs.iter() {
+			let fname: &str = func.label.name;
+			if fname == name {
+				return Some(func);
+			}
+		}
+		None
+	}
+
+	pub fn compile(&'a self) -> ~[u8] {
+		let mut vec = vec!();
+		let mut pos = 0;
+		for func in self.funcs.iter() {
+			let comp = func.compile(self, pos);
+			pos += comp.len();
+			vec.push_all(comp);
+		}
+		FromVec::from_vec(vec)
+	}
+
+	pub fn region(&'a self) -> os::MemoryMap {
+		let code = self.compile();
+		let mut region = match os::MemoryMap::new(code.len(), [os::MapReadable, os::MapWritable]) {
+			Ok(m) => m,
+			Err(f) => fail!(f.to_str())
+		};
+		region.copy(code);
+		region.protect();
+		region
+	} 
 }
 
 impl<'a> JitFunction<'a> {

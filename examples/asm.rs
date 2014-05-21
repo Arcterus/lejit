@@ -6,9 +6,7 @@ extern crate jit;
 #[phase(syntax)] extern crate jit_macros;
 extern crate libc;
 
-use std::os;
-use jit::{Movrr, Addri, Subri, Movri, Call, R1, R2, Compilable};
-use jit::region::MemoryRegion;
+use jit::{Movrr, Addri, Subri, Movri, Call, R1, R2};
 
 fn main() {
 	let mut jit = jit::Jit::new();
@@ -29,7 +27,7 @@ fn main() {
 			Movri R1, 10000;
 			Movri R1, 1000000000000
 	);
-	let code = jit.compile();
+	//let code = jit.compile();
 	/*let func = jit.function("add_four".to_owned());
 	func.push(Movrr(R1, R2));
 	func.push(Addri(R1, 4));
@@ -50,18 +48,10 @@ fn main() {
 	randfunc.end();
 	let code = jit.compile();*/
 
-	let mut region = match os::MemoryMap::new(code.len(), [os::MapReadable, os::MapWritable]) {
-		Ok(m) => m,
-		Err(f) => fail!(f.to_str())
-	};
-
-	type AddFourFn = extern "C" fn(int) -> int;
-	let add = jit_func::<AddFourFn>(&mut region, code);
+	let (region, add) = jit_makefn!(jit, (int) -> int);
 	println!("add(4): {}", add(4));
 }
 
-fn jit_func<T>(region: &mut os::MemoryMap, contents: &[u8]) -> T {
-	region.copy(contents);
-	region.protect();
+/*fn jit_func<T>(region: &mut os::MemoryMap, contents: &[u8]) -> T {
 	unsafe { std::mem::transmute(region.data) }
-}
+}*/

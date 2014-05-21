@@ -30,3 +30,13 @@ macro_rules! op_asm (
 		$op
 	)
 )
+
+#[macro_export]
+macro_rules! jit_makefn (
+	($jit:ident, ($($types:ty),+) -> $rettype:ty) => ({
+		type JitFnType = extern "C" fn($($types),+) -> $rettype;
+		let region = $jit.region();
+		let addr = region.data;
+		(region, unsafe { ::std::mem::transmute::<*mut u8, JitFnType>(addr) })
+	})
+)

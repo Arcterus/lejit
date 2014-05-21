@@ -1,55 +1,9 @@
 use std::{u8, u16, u32, u64};
 use std::vec::FromVec;
-use super::{Compilable, JitFunction, JitLabel, JitOp, JitReg};
+use super::{Compilable, Jit, JitFunction, JitLabel, JitOp, JitReg};
 
 //static REXW: u8 = 0x48;
 static RET: u8 = 0xc3;
-
-pub struct Jit<'a> {
-	funcs: Vec<JitFunction<'a>>
-}
-
-impl<'a> Jit<'a> {
-	pub fn new() -> Jit<'a> {
-		Jit {
-			funcs: vec!()
-		}
-	}
-
-	pub fn function<'x>(&'x mut self, name: ~str) -> &'x mut JitFunction<'a> {
-		let len = self.funcs.len();
-		let func = JitFunction::new(name, if self.funcs.is_empty() {
-			0
-		} else {
-			let oldfn = self.funcs.get(len - 1);
-			oldfn.label.pos + oldfn.len()
-		});
-		self.funcs.push(func);
-		self.funcs.get_mut(len)
-	}
-
-	pub fn find_function(&'a self, name: &str) -> Option<&'a JitFunction<'a>> {
-		// TODO: redesign so don't have to iterate through an array
-		for func in self.funcs.iter() {
-			let fname: &str = func.label.name;
-			if fname == name {
-				return Some(func);
-			}
-		}
-		None
-	}
-
-	pub fn compile(&'a self) -> ~[u8] {
-		let mut vec = vec!();
-		let mut pos = 0;
-		for func in self.funcs.iter() {
-			let comp = func.compile(self, pos);
-			pos += comp.len();
-			vec.push_all(comp);
-		}
-		FromVec::from_vec(vec)
-	}
-}
 
 impl<'a> Compilable<'a> for JitFunction<'a> {
 	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> ~[u8] {
