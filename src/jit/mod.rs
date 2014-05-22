@@ -1,4 +1,3 @@
-use std::vec::FromVec;
 use std::os;
 use region::MemoryRegion;
 
@@ -7,18 +6,23 @@ use region::MemoryRegion;
 pub mod backend;
 
 pub trait Compilable<'a> {
-	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> ~[u8];
+	fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8>;
 }
 
 pub enum JitOp<'a> {
 	Addri(JitReg, u64),
 	Subri(JitReg, u64),
+	Mulri(JitReg, u64),
+	Mulrr(JitReg, JitReg),
 	Movrr(JitReg, JitReg),
 	Movri(JitReg, u64),
+	Pushr(JitReg),
+	Popr(JitReg),
 	Call(&'a str),
 	Ret
 }
 
+#[deriving(Eq)]
 pub enum JitReg {
 	R1,
 	R2,
@@ -31,7 +35,11 @@ pub enum JitReg {
 	R9,
 	R10,
 	R11,
-	R12
+	R12,
+	R13,
+	R14,
+	SP,
+	BP
 }
 
 pub struct Jit<'a> {
@@ -79,15 +87,15 @@ impl<'a> Jit<'a> {
 		None
 	}
 
-	pub fn compile(&'a self) -> ~[u8] {
+	pub fn compile(&'a self) -> Vec<u8> {
 		let mut vec = vec!();
 		let mut pos = 0;
 		for func in self.funcs.iter() {
 			let comp = func.compile(self, pos);
 			pos += comp.len();
-			vec.push_all(comp);
+			vec.push_all_move(comp);
 		}
-		FromVec::from_vec(vec)
+		vec
 	}
 
 	pub fn region(&'a self) -> os::MemoryMap {
@@ -96,7 +104,7 @@ impl<'a> Jit<'a> {
 			Ok(m) => m,
 			Err(f) => fail!(f.to_str())
 		};
-		region.copy(code);
+		region.copy(code.as_slice());
 		region.protect();
 		region
 	}
