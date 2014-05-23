@@ -29,6 +29,8 @@ impl<'a> super::JitOp<'a> {
 				},
 			super::Mulri(reg, imm) => encode_mulri(reg, imm).len(), /* mul needs to be variable-length here, so... */
 			super::Mulrr(reg1, reg2) => encode_mulrr(reg1, reg2).len(),
+			super::Divri(reg, imm) => encode_divri(reg, imm).len(),
+			super::Divrr(reg1, reg2) => encode_divrr(reg1, reg2).len(),
 			super::Movrr(reg1, reg2) => {
 				let rex = if encode_rex(reg1, Some(reg2), false) == 0b01000000 { 0 } else { 1 };
 				3 + rex
@@ -55,6 +57,8 @@ impl<'a> Compilable<'a> for JitOp<'a> {
 			super::Subri(reg, imm) => encode_subri(reg, imm),
 			super::Mulri(reg, imm) => encode_mulri(reg, imm),
 			super::Mulrr(reg1, reg2) => encode_mulrr(reg1, reg2),
+			super::Divri(reg, imm) => encode_divri(reg, imm),
+			super::Divrr(reg1, reg2) => encode_divrr(reg1, reg2),
 			super::Movrr(reg1, reg2) => encode_movrr(reg1, reg2),
 			super::Movri(reg, imm) => encode_movri(reg, imm),
 			super::Pushr(reg) => encode_pushr(reg),
@@ -112,7 +116,7 @@ fn encode_subri(reg: super::JitReg, imm: u64) -> Vec<u8> {
 }
 
 #[inline(always)]
-fn encode_mulrr(reg: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
+fn encode_mul_div_rr(reg: super::JitReg, reg2: super::JitReg, special: u8) -> Vec<u8> {
 	let mut res = vec!();
 	if reg != super::R1 { /* rax */
 		res.push_all_move(encode_pushr(super::R1));
@@ -122,7 +126,7 @@ fn encode_mulrr(reg: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
 		res.push_all_move(encode_pushr(super::R3));
 		res.push_all_move(encode_movrr(super::R3, reg2));
 	}
-	res.push_all([encode_rex(super::R3, None, true), 0xf7, (0b11 << 6) + (0b100 << 3) + super::R3.to_real_reg()]);
+	res.push_all([encode_rex(super::R3, None, true), 0xf7, (0b11 << 6) + (special << 3) + super::R3.to_real_reg()]);
 	if reg2 != super::R3 { /* rsi */
 		res.push_all_move(encode_popr(super::R3));
 	}
@@ -131,6 +135,11 @@ fn encode_mulrr(reg: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
 		res.push_all_move(encode_popr(super::R1));
 	}
 	res
+}
+
+#[inline(always)]
+fn encode_mulrr(reg: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
+	encode_mul_div_rr(reg, reg2, 0b100)
 }
 
 #[inline(always)]
@@ -145,6 +154,27 @@ fn encode_mulri(reg: super::JitReg, imm: u64) -> Vec<u8> {
 	res.push_all_move(encode_pushr(immreg));
 	res.push_all_move(encode_movri(immreg, imm));
 	res.push_all_move(encode_mulrr(reg, immreg));
+	res.push_all_move(encode_popr(immreg));
+	res
+}
+
+#[inline(always)]
+fn encode_divrr(reg1: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
+	encode_mul_div_rr(reg1, reg2, 0b110)
+}
+
+#[inline(always)]
+fn encode_divri(reg: super::JitReg, imm: u64) -> Vec<u8> {
+	let mut res = vec!();
+	let immreg =
+		if reg == super::R3 { /* rsi */
+			super::R5 /* rcx */
+		} else {
+			super::R3
+		};
+	res.push_all_move(encode_pushr(immreg));
+	res.push_all_move(encode_movri(immreg, imm));
+	res.push_all_move(encode_divrr(reg, immreg));
 	res.push_all_move(encode_popr(immreg));
 	res
 }

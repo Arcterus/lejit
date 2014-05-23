@@ -14,6 +14,8 @@ pub enum JitOp<'a> {
 	Subri(JitReg, u64),
 	Mulri(JitReg, u64),
 	Mulrr(JitReg, JitReg),
+	Divri(JitReg, u64),
+	Divrr(JitReg, JitReg),
 	Movrr(JitReg, JitReg),
 	Movri(JitReg, u64),
 	Pushr(JitReg),

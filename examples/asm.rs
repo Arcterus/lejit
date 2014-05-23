@@ -9,7 +9,7 @@ extern crate jit;
 #[phase(syntax)] extern crate jit_macros;
 extern crate libc;
 
-use jit::{Movrr, Addri, Subri, Movri, Mulri, Mulrr, Call, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, SP, BP};
+use jit::{Movrr, Addri, Subri, Movri, Mulri, Mulrr, Divri, Divrr, Call, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, SP, BP};
 
 fn main() {
 	let mut jit = jit::Jit::new();
@@ -49,6 +49,7 @@ fn main() {
 		random_stuff.push(Movri(R1, 1000000000000));
 		random_stuff.push(Movri(R1, 10));
 		random_stuff.push(Mulri(R1, 10));
+		random_stuff.push(Divri(R1, 100));
 	});
 	/*{
 		let func = jit.function("add_four".to_owned());
