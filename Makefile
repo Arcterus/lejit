@@ -9,7 +9,7 @@ rust-jit-macros: src/macros.rs
 	touch $@
 
 clean:
-	rm rust-jit
+	rm rust-jit rust-jit-macros
 
 example: examples/asm.rs rust-jit
 	rustc -L . -o example-asm $<

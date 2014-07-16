@@ -1,18 +1,16 @@
-#![crate_id = "jit_macros#0.1-pre"]
+#![crate_name = "jit_macros"]
 #![crate_type = "rlib"]
 
 #![feature(macro_rules)]
-
-#![macro_escape]
 
 #[macro_export]
 macro_rules! jit_asm (
 	($jit:ident, $(fn $flabel:ident : $($(. $sublabel:ident :)* $op:path $($operands:expr),*);*)+) => ({
 		$({
-			let func = $jit.function(stringify!($flabel).to_owned());
+			let func = $jit.function(stringify!($flabel).to_string());
 			$(
 				$(
-					func.label(stringify!($sublabel).to_owned());
+					func.label(stringify!($sublabel).to_string());
 				)*
 				func.push(op_asm!($op $(,$operands)*));
 			)*
@@ -36,7 +34,7 @@ macro_rules! jit_compilefn (
 	($jit:ident, ($($types:ty),+) -> $rettype:ty) => ({
 		type JitFnType = extern "C" fn($($types),+) -> $rettype;
 		let region = $jit.region();
-		let addr = region.data;
+		let addr = region.data();
 		(region, unsafe { ::std::mem::transmute::<*mut u8, JitFnType>(addr) })
 	})
 )
@@ -44,7 +42,7 @@ macro_rules! jit_compilefn (
 #[macro_export]
 macro_rules! jit_makefn (
 	($jit:ident, $func:ident, $body:block) => ({
-		let $func = $jit.function(stringify!($func).to_owned());
+		let $func = $jit.function(stringify!($func).to_string());
 		if true == true $body
 		$func.end();
 	})

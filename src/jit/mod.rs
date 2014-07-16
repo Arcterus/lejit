@@ -24,7 +24,7 @@ pub enum JitOp<'a> {
 	Ret
 }
 
-#[deriving(Eq)]
+#[deriving(PartialEq)]
 pub enum JitReg {
 	R1,
 	R2,
@@ -55,7 +55,7 @@ pub struct JitFunction<'a> {
 }
 
 pub struct JitLabel {
-	name: ~str,
+	name: String,
 	pos: uint
 }
 
@@ -66,7 +66,7 @@ impl<'a> Jit<'a> {
 		}
 	}
 
-	pub fn function<'x>(&'x mut self, name: ~str) -> &'x mut JitFunction<'a> {
+	pub fn function<'x>(&'x mut self, name: String) -> &'x mut JitFunction<'a> {
 		let len = self.funcs.len();
 		let func = JitFunction::new(name, if self.funcs.is_empty() {
 			0
@@ -81,7 +81,7 @@ impl<'a> Jit<'a> {
 	pub fn find_function(&'a self, name: &str) -> Option<&'a JitFunction<'a>> {
 		// TODO: redesign so don't have to iterate through an array
 		for func in self.funcs.iter() {
-			let fname: &str = func.label.name;
+			let fname: &str = func.label.name.as_slice();
 			if fname == name {
 				return Some(func);
 			}
@@ -104,7 +104,7 @@ impl<'a> Jit<'a> {
 		let code = self.compile();
 		let mut region = match os::MemoryMap::new(code.len(), [os::MapReadable, os::MapWritable]) {
 			Ok(m) => m,
-			Err(f) => fail!(f.to_str())
+			Err(f) => fail!(f)
 		};
 		region.copy(code.as_slice());
 		region.protect();
@@ -113,7 +113,7 @@ impl<'a> Jit<'a> {
 }
 
 impl<'a> JitFunction<'a> {
-	pub fn new(name: ~str, pos: uint) -> JitFunction<'a> {
+	pub fn new(name: String, pos: uint) -> JitFunction<'a> {
 		JitFunction {
 			label: JitLabel::new(name, pos),
 			sublabels: vec!(),
@@ -125,7 +125,7 @@ impl<'a> JitFunction<'a> {
 		self.ops.push(op);
 	}
 
-	pub fn label(&mut self, name: ~str) {
+	pub fn label(&mut self, name: String) {
 		self.sublabels.push(JitLabel::new(name, self.ops.len()));
 	}
 
@@ -143,7 +143,7 @@ impl<'a> JitFunction<'a> {
 }
 
 impl JitLabel {
-	pub fn new(name: ~str, pos: uint) -> JitLabel {
+	pub fn new(name: String, pos: uint) -> JitLabel {
 		JitLabel {
 			name: name,
 			pos: pos

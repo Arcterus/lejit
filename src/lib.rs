@@ -1,4 +1,4 @@
-#![crate_id = "jit#0.1-pre"]
+#![crate_name = "jit"]
 
 #![license = "MPL v2.0"]
 #![crate_type = "dylib"]
