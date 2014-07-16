@@ -1,4 +1,4 @@
-# rust-jit [![Build Status](https://travis-ci.org/Arcterus/rust-jit.png?branch=master)](https://travis-ci.org/Arcterus/rust-jit) #
+# LeJIT [![Build Status](https://travis-ci.org/Arcterus/lejit.png?branch=master)](https://travis-ci.org/Arcterus/lejit) #
 
 A simple JIT library written in Rust.  Any help is much appreciated.
 
