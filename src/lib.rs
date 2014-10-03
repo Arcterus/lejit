@@ -1,4 +1,4 @@
-#![crate_name = "jit"]
+#![crate_name = "lejit"]
 
 #![license = "MPL v2.0"]
 #![crate_type = "dylib"]
@@ -12,4 +12,3 @@ pub use jit::*;
 
 pub mod region;
 pub mod jit;
-
