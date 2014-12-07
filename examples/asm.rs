@@ -1,34 +1,17 @@
-/* This essentially shows three ways to use the JIT (macro asm, macro procedural, procedural with blocks) */
-
 #![crate_type = "bin"]
 
 #![feature(macro_rules, globs, phase)]
 
+#[phase(plugin, link)]
 extern crate lejit;
-#[phase(plugin)] extern crate lejit_macros;
 extern crate libc;
 
 use lejit::*;
+use lejit::JitOp::*;
+use lejit::JitReg::*;
 
 fn main() {
    let mut jit = Jit::new();
-   /*jit_asm!(jit,
-      fn add_four:
-         Movrr R1, R2;
-         Addri R1, 4;
-         Call "sub_four"
-      fn sub_four:
-         Movrr R1, R2;
-         Subri R1, 4;
-         Call "random_stuff"
-      fn random_stuff:
-         Subri R1, 7;
-         Addri R1, 1000000000;
-         Subri R1, 500000000;
-         Movri R1, 1;
-         Movri R1, 10000;
-         Movri R1, 1000000000000
-   );*/
 
    jit.function("add_four".to_string())
       .op(Movrr(R1, R2))
@@ -51,7 +34,6 @@ fn main() {
    op2.op(Movri(R1, 1000000000000))
       .end();
 
-   let (region, add) = jit_compilefn!(jit, (int) -> int);
+   let add = jit_compilefn!(jit, (int) -> int);
    println!("add(4): {}", add(4));
-   drop(region);  // stops warning message
 }

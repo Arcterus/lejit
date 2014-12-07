@@ -1,12 +1,16 @@
+#![experimental]
+
 use libc;
 use std::ptr;
 use std::os;
 
+#[experimental]
 pub trait MemoryRegion {
    fn protect(&mut self) -> bool;
    fn copy(&mut self, data: &[u8]) -> bool;
 }
 
+#[experimental]
 impl MemoryRegion for os::MemoryMap {
    fn protect(&mut self) -> bool {
       unsafe {

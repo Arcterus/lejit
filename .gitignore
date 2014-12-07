@@ -3,6 +3,8 @@
 *.so
 /rust-jit
 /rust-jit-macros
+/Cargo.lock
+/target
 *~
 .*.swp
 .*.swo

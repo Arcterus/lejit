@@ -1,23 +1,29 @@
+#![experimental]
+
 use std::os;
 use region::MemoryRegion;
 
 #[cfg(target_arch = "x86_64")]
 #[path = "x86_64.rs"]
-pub mod backend;
+mod backend;
 
+#[experimental]
 pub trait Compilable<'a> {
    fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8>;
 }
 
+#[experimental]
 pub trait Opcode {
    fn len(&self) -> uint;
 }
 
+#[experimental]
 pub trait Register {
    fn to_real_reg(&self) -> u8;
    fn extended(&self) -> bool;
 }
 
+#[experimental]
 pub enum JitOp<'a> {
    Addri(JitReg, u64),
    Subri(JitReg, u64),
@@ -34,6 +40,7 @@ pub enum JitOp<'a> {
 }
 
 #[deriving(PartialEq)]
+#[experimental]
 pub enum JitReg {
    R1,
    R2,
@@ -53,10 +60,13 @@ pub enum JitReg {
    BP
 }
 
+#[experimental]
 pub struct Jit<'a> {
-   funcs: Vec<JitFunction<'a>>
+   funcs: Vec<JitFunction<'a>>,
+   region: Option<os::MemoryMap>
 }
 
+#[experimental]
 pub struct JitFunction<'a> {
    pub label: JitLabel,
    pub sublabels: Vec<JitLabel>,
@@ -65,23 +75,29 @@ pub struct JitFunction<'a> {
    len: uint
 }
 
+#[experimental]
 pub struct JitLabel {
    name: String,
    pos: uint
 }
 
+#[experimental]
 pub struct JitOpcode<'a> {
    func: JitFunction<'a>,
    op: JitOp<'a>
 }
 
+#[experimental]
 impl<'a> Jit<'a> {
    pub fn new() -> Jit<'a> {
       Jit {
-         funcs: vec!()
+         funcs: vec!(),
+         region: None
       }
    }
 
+   /// Creates a function with the given name and returns a JitFunction for the
+   /// new function.
    pub fn function<'x>(&'x mut self, name: String) -> JitFunction<'a> {
       let len = self.funcs.len();
       let pos =
@@ -95,6 +111,8 @@ impl<'a> Jit<'a> {
       JitFunction::new(name, Some(jit), pos)
    }
 
+   /// Tries to find and return the function with the given name.  If there is
+   /// no function with the given name, None will be returned.
    pub fn find_function<'x>(&'a self, name: &str) -> Option<&'x JitFunction<'a>> {
       // TODO: redesign so don't have to iterate through an array
       for func in self.funcs.iter() {
@@ -106,6 +124,8 @@ impl<'a> Jit<'a> {
       None
    }
 
+   /// Compiles the code that has been given to the JIT so far and returns the
+   /// executable instructions.
    pub fn compile(&'a self) -> Vec<u8> {
       let mut vec = vec!();
       let mut pos = 0;
@@ -117,18 +137,23 @@ impl<'a> Jit<'a> {
       vec
    }
 
-   pub fn region(&'a self) -> os::MemoryMap {
-      let code = self.compile();
-      let mut region = match os::MemoryMap::new(code.len(), [os::MapReadable, os::MapWritable]) {
+   /// Generates a memory mapped region for the executable code to be placed.
+   /// The returned region will be invalidated if this function is called again.
+   pub fn region(&'a mut self) -> &mut os::MemoryMap {
+      let this: &'a Jit<'a> = unsafe { ::std::mem::transmute_copy(&self) };      // Get the borrow checker to shut up
+      let code = this.compile();
+      let mut region = match os::MemoryMap::new(code.len(), &[os::MapReadable, os::MapWritable]) {
          Ok(m) => m,
-         Err(f) => fail!(f)
+         Err(f) => panic!(f)
       };
       region.copy(code.as_slice());
       region.protect();
-      region
+      self.region = Some(region);
+      self.region.as_mut().unwrap()
    }
 }
 
+#[experimental]
 impl<'a> JitFunction<'a> {
    pub fn new(name: String, jit: Option<*mut Jit<'a>>, pos: uint) -> JitFunction<'a> {
       JitFunction {
@@ -151,8 +176,8 @@ impl<'a> JitFunction<'a> {
    }
 
    pub fn end(mut self) {
-      self.len += (Ret).len();
-      self.ops.push(Ret);
+      self.len += (JitOp::Ret).len();
+      self.ops.push(JitOp::Ret);
       let jit = self.jit.unwrap();
       self.jit = None;
       unsafe { (*jit).funcs.push(self) };
@@ -161,6 +186,7 @@ impl<'a> JitFunction<'a> {
    pub fn len(&self) -> uint { self.len }
 }
 
+#[experimental]
 impl JitLabel {
    pub fn new(name: String, pos: uint) -> JitLabel {
       JitLabel {
@@ -170,6 +196,7 @@ impl JitLabel {
    }
 }
 
+#[experimental]
 impl<'a> JitOpcode<'a> {
    pub fn new(func: JitFunction<'a>, op: JitOp<'a>) -> JitOpcode<'a> {
       JitOpcode {
@@ -187,6 +214,7 @@ impl<'a> JitOpcode<'a> {
    }
 }
 
+#[experimental]
 impl<'a> Opcode for JitOpcode<'a> {
    fn len(&self) -> uint { self.op.len() }
 }

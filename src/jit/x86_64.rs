@@ -4,6 +4,7 @@ use super::{Compilable, Opcode, Register, Jit, JitFunction, JitOp, JitReg};
 //static REXW: u8 = 0x48;
 static RET: u8 = 0xc3;
 
+#[experimental]
 impl<'a> Compilable<'a> for JitFunction<'a> {
    fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8> {
       let mut vec = vec!();
@@ -18,60 +19,62 @@ impl<'a> Compilable<'a> for JitFunction<'a> {
    }
 }
 
+#[experimental]
 impl<'a> Opcode for JitOp<'a> {
    fn len(&self) -> uint {
       match *self {
-         super::Addri(_, imm) | super::Subri(_, imm) =>
+         JitOp::Addri(_, imm) | JitOp::Subri(_, imm) =>
             if needed_bytes(imm) == 1 {
                4
             } else {
                7 // TODO: account for 4
             },
-         super::Mulri(reg, imm) => encode_mulri(reg, imm).len(), /* mul needs to be variable-length here, so... */
-         super::Mulrr(reg1, reg2) => encode_mulrr(reg1, reg2).len(),
-         super::Divri(reg, imm) => encode_divri(reg, imm).len(),
-         super::Divrr(reg1, reg2) => encode_divrr(reg1, reg2).len(),
-         super::Movrr(reg1, reg2) => {
+         JitOp::Mulri(reg, imm) => encode_mulri(reg, imm).len(), /* mul needs to be variable-length here, so... */
+         JitOp::Mulrr(reg1, reg2) => encode_mulrr(reg1, reg2).len(),
+         JitOp::Divri(reg, imm) => encode_divri(reg, imm).len(),
+         JitOp::Divrr(reg1, reg2) => encode_divrr(reg1, reg2).len(),
+         JitOp::Movrr(reg1, reg2) => {
             let rex = if encode_rex(reg1, Some(reg2), false) == 0b01000000 { 0 } else { 1 };
             3 + rex
          }
-         super::Movri(reg, imm) => {
+         JitOp::Movri(reg, imm) => {
             let rex = if encode_rex(reg, None, false) == 0b01000000 { 0 } else { 1 };
             rex + match imm {
                1 | 2 | 3 => 5,
                _ => 9
             }
          },
-         super::Pushr(reg) => 1 + if encode_rex(reg, None, false) == 0b01000000 { 0 } else { 1 },
-         super::Popr(reg) => 1 + if encode_rex(reg, None, false) == 0b01000000 { 0 } else { 1 },
-         super::Call(_) => 5,
-         super::Ret => 1
+         JitOp::Pushr(reg) => 1 + if encode_rex(reg, None, false) == 0b01000000 { 0 } else { 1 },
+         JitOp::Popr(reg) => 1 + if encode_rex(reg, None, false) == 0b01000000 { 0 } else { 1 },
+         JitOp::Call(_) => 5,
+         JitOp::Ret => 1
       }
    }
 }
 
+#[experimental]
 impl<'a> Compilable<'a> for JitOp<'a> {
    fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8> {
       match *self {
-         super::Addri(reg, imm) => encode_addri(reg, imm),
-         super::Subri(reg, imm) => encode_subri(reg, imm),
-         super::Mulri(reg, imm) => encode_mulri(reg, imm),
-         super::Mulrr(reg1, reg2) => encode_mulrr(reg1, reg2),
-         super::Divri(reg, imm) => encode_divri(reg, imm),
-         super::Divrr(reg1, reg2) => encode_divrr(reg1, reg2),
-         super::Movrr(reg1, reg2) => encode_movrr(reg1, reg2),
-         super::Movri(reg, imm) => encode_movri(reg, imm),
-         super::Pushr(reg) => encode_pushr(reg),
-         super::Popr(reg) => encode_popr(reg),
-         super::Call(name) => encode_call(jit.find_function(name), pos),
-         super::Ret => vec!(RET),
+         JitOp::Addri(reg, imm) => encode_addri(reg, imm),
+         JitOp::Subri(reg, imm) => encode_subri(reg, imm),
+         JitOp::Mulri(reg, imm) => encode_mulri(reg, imm),
+         JitOp::Mulrr(reg1, reg2) => encode_mulrr(reg1, reg2),
+         JitOp::Divri(reg, imm) => encode_divri(reg, imm),
+         JitOp::Divrr(reg1, reg2) => encode_divrr(reg1, reg2),
+         JitOp::Movrr(reg1, reg2) => encode_movrr(reg1, reg2),
+         JitOp::Movri(reg, imm) => encode_movri(reg, imm),
+         JitOp::Pushr(reg) => encode_pushr(reg),
+         JitOp::Popr(reg) => encode_popr(reg),
+         JitOp::Call(name) => encode_call(jit.find_function(name), pos),
+         JitOp::Ret => vec!(RET),
          //_ => unimplemented!() // TODO: implement all ops
       }
    }
 }
 
-#[inline(always)]
-fn encode_rex(reg: super::JitReg, reg2: Option<super::JitReg>, w_field: bool) -> u8 {
+#[inline]
+fn encode_rex(reg: JitReg, reg2: Option<JitReg>, w_field: bool) -> u8 {
    // TODO: handle SIB if needed
    let mut res = if w_field {
       0b01001000
@@ -93,63 +96,64 @@ fn encode_rex(reg: super::JitReg, reg2: Option<super::JitReg>, w_field: bool) ->
    res
 }
 
-#[inline(always)]
-fn encode_addri(reg: super::JitReg, imm: u64) -> Vec<u8> {
+#[inline]
+fn encode_addri(reg: JitReg, imm: u64) -> Vec<u8> {
    let rex = encode_rex(reg, None, true);
    match needed_bytes(imm) {
       1 => vec!(rex, 0x83, (0b11 << 6) + reg.to_real_reg(), imm as u8),
       2 | 3 => vec!(rex, 0x81, (0b11 << 6) + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8),
-      4 => fail!(), // TODO: should mov and then add
+      4 => panic!(), // TODO: should mov and then add
       _ => unreachable!()
    }
 }
 
-#[inline(always)]
-fn encode_subri(reg: super::JitReg, imm: u64) -> Vec<u8> {
+#[inline]
+fn encode_subri(reg: JitReg, imm: u64) -> Vec<u8> {
    let rex = encode_rex(reg, None, true);
    match needed_bytes(imm) {
       1 => vec!(rex, 0x83, (0b11 << 6) + (0b101 << 3) + reg.to_real_reg(), imm as u8),
       2 | 3 => vec!(rex, 0x81, (0b11 << 6) + (0b101 << 3) + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8),
-      4 => fail!(), // TODO: should mov and then add
+      4 => panic!(), // TODO: should mov and then add
       _ => unreachable!()
    }
 }
 
-#[inline(always)]
-fn encode_mul_div_rr(reg: super::JitReg, reg2: super::JitReg, special: u8) -> Vec<u8> {
+#[inline]
+fn encode_mul_div_rr(reg: JitReg, reg2: JitReg, special: u8) -> Vec<u8> {
    let mut res = vec!();
-   if reg != super::R1 { /* rax */
-      res.extend(encode_pushr(super::R1).into_iter());
-      res.extend(encode_movrr(super::R1, reg).into_iter());
+   if reg != JitReg::R1 { /* rax */
+      res.extend(encode_pushr(JitReg::R1).into_iter());
+      res.extend(encode_movrr(JitReg::R1, reg).into_iter());
    }
-   if reg2 != super::R3 { /* rsi */
-      res.extend(encode_pushr(super::R3).into_iter());
-      res.extend(encode_movrr(super::R3, reg2).into_iter());
+   if reg2 != JitReg::R3 { /* rsi */
+      res.extend(encode_pushr(JitReg::R3).into_iter());
+      res.extend(encode_movrr(JitReg::R3, reg2).into_iter());
    }
-   res.push_all([encode_rex(super::R3, None, true), 0xf7, (0b11 << 6) + (special << 3) + super::R3.to_real_reg()]);
-   if reg2 != super::R3 { /* rsi */
-      res.extend(encode_popr(super::R3).into_iter());
+   res.push_all(&[encode_rex(JitReg::R3, None, true), 0xf7,
+                             (0b11 << 6) + (special << 3) + JitReg::R3.to_real_reg()]);
+   if reg2 != JitReg::R3 { /* rsi */
+      res.extend(encode_popr(JitReg::R3).into_iter());
    }
-   if reg != super::R1 { /* rax */
-      res.extend(encode_movrr(reg, super::R1).into_iter());
-      res.extend(encode_popr(super::R1).into_iter());
+   if reg != JitReg::R1 { /* rax */
+      res.extend(encode_movrr(reg, JitReg::R1).into_iter());
+      res.extend(encode_popr(JitReg::R1).into_iter());
    }
    res
 }
 
-#[inline(always)]
-fn encode_mulrr(reg: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
+#[inline]
+fn encode_mulrr(reg: JitReg, reg2: JitReg) -> Vec<u8> {
    encode_mul_div_rr(reg, reg2, 0b100)
 }
 
-#[inline(always)]
-fn encode_mulri(reg: super::JitReg, imm: u64) -> Vec<u8> {
+#[inline]
+fn encode_mulri(reg: JitReg, imm: u64) -> Vec<u8> {
    let mut res = vec!();
    let immreg =
-      if reg == super::R3 { /* rsi */
-         super::R5 /* rcx */
+      if reg == JitReg::R3 { /* rsi */
+         JitReg::R5 /* rcx */
       } else {
-         super::R3
+         JitReg::R3
       };
    res.extend(encode_pushr(immreg).into_iter());
    res.extend(encode_movri(immreg, imm).into_iter());
@@ -158,19 +162,19 @@ fn encode_mulri(reg: super::JitReg, imm: u64) -> Vec<u8> {
    res
 }
 
-#[inline(always)]
-fn encode_divrr(reg1: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
+#[inline]
+fn encode_divrr(reg1: JitReg, reg2: JitReg) -> Vec<u8> {
    encode_mul_div_rr(reg1, reg2, 0b110)
 }
 
-#[inline(always)]
-fn encode_divri(reg: super::JitReg, imm: u64) -> Vec<u8> {
+#[inline]
+fn encode_divri(reg: JitReg, imm: u64) -> Vec<u8> {
    let mut res = vec!();
    let immreg =
-      if reg == super::R3 { /* rsi */
-         super::R5 /* rcx */
+      if reg == JitReg::R3 { /* rsi */
+         JitReg::R5 /* rcx */
       } else {
-         super::R3
+         JitReg::R3
       };
    res.extend(encode_pushr(immreg).into_iter());
    res.extend(encode_movri(immreg, imm).into_iter());
@@ -179,8 +183,8 @@ fn encode_divri(reg: super::JitReg, imm: u64) -> Vec<u8> {
    res
 }
 
-#[inline(always)]
-fn encode_pushr(reg: super::JitReg) -> Vec<u8> {
+#[inline]
+fn encode_pushr(reg: JitReg) -> Vec<u8> {
    let rex = encode_rex(reg, None, true);
    if rex == 0b01001000 {
       vec!(0x50 + reg.to_real_reg())
@@ -189,8 +193,8 @@ fn encode_pushr(reg: super::JitReg) -> Vec<u8> {
    }
 }
 
-#[inline(always)]
-fn encode_popr(reg: super::JitReg) -> Vec<u8> {
+#[inline]
+fn encode_popr(reg: JitReg) -> Vec<u8> {
    let rex = encode_rex(reg, None, true);
    if rex == 0b01001000 {
       vec!(0x58 + reg.to_real_reg())
@@ -199,28 +203,34 @@ fn encode_popr(reg: super::JitReg) -> Vec<u8> {
    }
 }
 
-#[inline(always)]
-fn encode_movrr(reg1: super::JitReg, reg2: super::JitReg) -> Vec<u8> {
-   vec!(encode_rex(reg1, Some(reg2), true), 0x89, (0b11 << 6) + (reg2.to_real_reg() << 3) + reg1.to_real_reg() as u8)
+#[inline]
+fn encode_movrr(reg1: JitReg, reg2: JitReg) -> Vec<u8> {
+   vec!(encode_rex(reg1, Some(reg2), true), 0x89,
+                   (0b11 << 6) + (reg2.to_real_reg() << 3) + reg1.to_real_reg() as u8)
 }
 
-#[inline(always)]
-fn encode_movri(reg: super::JitReg, imm: u64) -> Vec<u8> {
+#[inline]
+fn encode_movri(reg: JitReg, imm: u64) -> Vec<u8> {
    let rex = encode_rex(reg, None, false);
    match needed_bytes(imm) {
       1 | 2 | 3 => {
          if rex == 0b01000000 {
-            vec!(0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8)
+            vec!(0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8,
+                 (imm >> 16) as u8, (imm >> 24) as u8)
          } else {
-            vec!(rex, 0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8)
+            vec!(rex, 0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8,
+                 (imm >> 16) as u8, (imm >> 24) as u8)
          }
       }
-      4 => vec!(rex + (1 << 3), 0xb8 + reg.to_real_reg(), imm as u8, (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8, (imm >> 32) as u8, (imm >> 40) as u8, (imm >> 48) as u8, (imm >> 56) as u8),
+      4 => vec!(rex + (1 << 3), 0xb8 + reg.to_real_reg(), imm as u8,
+                (imm >> 8) as u8, (imm >> 16) as u8, (imm >> 24) as u8,
+                (imm >> 32) as u8, (imm >> 40) as u8, (imm >> 48) as u8,
+                (imm >> 56) as u8),
       _ => unreachable!()
    }
 }
 
-#[inline(always)]
+#[inline]
 fn encode_call<'a>(func: Option<&'a JitFunction<'a>>, pos: uint) -> Vec<u8> {
    match func {
       Some(func) => {
@@ -230,11 +240,11 @@ fn encode_call<'a>(func: Option<&'a JitFunction<'a>>, pos: uint) -> Vec<u8> {
          }
          vec!(0xe8, pos as u8, (pos >> 8) as u8, (pos >> 16) as u8, (pos >> 24) as u8)
       }
-      None => fail!() // XXX: fix
+      None => panic!() // XXX: fix
    }
 }
 
-#[inline(always)]
+#[inline]
 fn needed_bytes(num: u64) -> uint {
    if num <= u8::MAX as u64 {
       1
@@ -249,31 +259,33 @@ fn needed_bytes(num: u64) -> uint {
    }
 }
 
+#[experimental]
 impl Register for JitReg {
    fn to_real_reg(&self) -> u8 {
       match *self {
-         super::R1  => 0b000, /* rax */
-         super::R2  => 0b111, /* rdi */
-         super::R3  => 0b110, /* rsi */
-         super::R4  => 0b010, /* rdx */
-         super::R5  => 0b001, /* rcx */
-         super::R6  => 0b000, /* r8  */
-         super::R7  => 0b001, /* r9  */
-         super::R8  => 0b011, /* rbx */
-         super::R9  => 0b010, /* r10 */
-         super::R10 => 0b011, /* r11 */
-         super::R11 => 0b100, /* r12 */
-         super::R12 => 0b101, /* r13 */
-         super::R13 => 0b110, /* r14 */
-         super::R14 => 0b111, /* r15 */
-         super::SP  => 0b100, /* rsp */
-         super::BP  => 0b101  /* rbp */
+         JitReg::R1  => 0b000, /* rax */
+         JitReg::R2  => 0b111, /* rdi */
+         JitReg::R3  => 0b110, /* rsi */
+         JitReg::R4  => 0b010, /* rdx */
+         JitReg::R5  => 0b001, /* rcx */
+         JitReg::R6  => 0b000, /* r8  */
+         JitReg::R7  => 0b001, /* r9  */
+         JitReg::R8  => 0b011, /* rbx */
+         JitReg::R9  => 0b010, /* r10 */
+         JitReg::R10 => 0b011, /* r11 */
+         JitReg::R11 => 0b100, /* r12 */
+         JitReg::R12 => 0b101, /* r13 */
+         JitReg::R13 => 0b110, /* r14 */
+         JitReg::R14 => 0b111, /* r15 */
+         JitReg::SP  => 0b100, /* rsp */
+         JitReg::BP  => 0b101  /* rbp */
       }
    }
 
    fn extended(&self) -> bool {
       match *self {
-         super::R6 | super::R7 | super::R9 | super::R10 | super::R11 | super::R12 | super::R13 | super::R14 => true,
+         JitReg::R6 | JitReg::R7 | JitReg::R9 | JitReg::R10 | JitReg::R11 |
+               JitReg::R12 | JitReg::R13 | JitReg::R14 => true,
          _ => false
       }
    }
