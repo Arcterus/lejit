@@ -73,7 +73,7 @@ pub struct JitFunction<'a:'b, 'b> {
    pub label: JitLabel,
    pub sublabels: Vec<JitLabel>,
    pub ops: Vec<JitOp<'a>>,
-   jit: Option<&'b mut Jit<'a, 'b>>,   // TODO: try to convert to borrowed pointer
+   jit: Option<&'b mut Jit<'a, 'b>>,
    len: uint
 }
 
@@ -101,12 +101,28 @@ impl<'a, 'b> Jit<'a, 'b> {
 
    /// Creates a function with the given name and returns a JitFunction for the
    /// new function.
-   pub fn function(&'b mut self, name: String) -> JitFunction<'a, 'b> {
+   fn function(&'b mut self, name: String) -> JitFunction<'a, 'b> {
       let pos = match self.last_func {
          Some(func) => func.label.pos + func.len(),
          None => 0
       };
       JitFunction::new(name, Some(self), pos)
+   }
+
+   /// Builds a function with the given name and using the given closure to add
+   /// operations to the function.
+   ///
+   /// # Example
+   ///
+   /// ```
+   /// let mut jit = Jit::new();
+   /// jit.build_function("example".to_string(), |func| {
+   ///    func.op(Movri(R1, 3)).end()
+   /// });
+   /// ```
+   pub fn build_function(&'b mut self, name: String, cb: |func: JitFunction<'a, 'b>|) {
+      let func = self.function(name);
+      cb(func)
    }
 
    /// Tries to find and return the function with the given name.  If there is
@@ -144,7 +160,7 @@ impl<'a, 'b> Jit<'a, 'b> {
 }
 
 #[experimental]
-impl<'a, 'b> JitFunction<'a, 'b> {
+impl<'a:'b, 'b> JitFunction<'a, 'b> {
    pub fn new(name: String, jit: Option<&'b mut Jit<'a, 'b>>, pos: uint) -> JitFunction<'a, 'b> {
       JitFunction {
          label: JitLabel::new(name, pos),
@@ -190,7 +206,7 @@ impl JitLabel {
 }
 
 #[experimental]
-impl<'a, 'b> JitOpcode<'a, 'b> {
+impl<'a:'b, 'b> JitOpcode<'a, 'b> {
    pub fn new(func: JitFunction<'a, 'b>, op: JitOp<'a>) -> JitOpcode<'a, 'b> {
       JitOpcode {
          func: func,
