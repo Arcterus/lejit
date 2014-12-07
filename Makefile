@@ -11,8 +11,8 @@ rust-jit-macros: src/macros.rs
 clean:
 	rm rust-jit rust-jit-macros liblejit*
 
-example: examples/asm.rs rust-jit
-	rustc -L . -o example-asm $<
-	./example-asm
-	rm example-asm
+example: examples/math.rs rust-jit
+	rustc -L . -o example-math $<
+	./example-math
+	rm example-math
 

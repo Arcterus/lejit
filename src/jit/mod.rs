@@ -1,5 +1,6 @@
 #![experimental]
 
+use std::collections::BTreeMap;
 use std::os;
 use region::MemoryRegion;
 
@@ -8,8 +9,8 @@ use region::MemoryRegion;
 mod backend;
 
 #[experimental]
-pub trait Compilable<'a> {
-   fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8>;
+pub trait Compilable<'a, 'b> {
+   fn compile(&self, jit: &'a Jit<'a, 'b>, pos: uint) -> Vec<u8>;
 }
 
 #[experimental]
@@ -61,17 +62,18 @@ pub enum JitReg {
 }
 
 #[experimental]
-pub struct Jit<'a> {
-   funcs: Vec<JitFunction<'a>>,
+pub struct Jit<'a:'b, 'b> {
+   funcs: BTreeMap<String, JitFunction<'a, 'b>>,
+   last_func: Option<&'b JitFunction<'a, 'b>>,
    region: Option<os::MemoryMap>
 }
 
 #[experimental]
-pub struct JitFunction<'a> {
+pub struct JitFunction<'a:'b, 'b> {
    pub label: JitLabel,
    pub sublabels: Vec<JitLabel>,
    pub ops: Vec<JitOp<'a>>,
-   jit: Option<*mut Jit<'a>>,   // TODO: try to convert to borrowed pointer
+   jit: Option<&'b mut Jit<'a, 'b>>,   // TODO: try to convert to borrowed pointer
    len: uint
 }
 
@@ -82,46 +84,35 @@ pub struct JitLabel {
 }
 
 #[experimental]
-pub struct JitOpcode<'a> {
-   func: JitFunction<'a>,
+pub struct JitOpcode<'a:'b, 'b> {
+   func: JitFunction<'a, 'b>,
    op: JitOp<'a>
 }
 
 #[experimental]
-impl<'a> Jit<'a> {
-   pub fn new() -> Jit<'a> {
+impl<'a, 'b> Jit<'a, 'b> {
+   pub fn new() -> Jit<'a, 'b> {
       Jit {
-         funcs: vec!(),
+         funcs: BTreeMap::new(),
+         last_func: None,
          region: None
       }
    }
 
    /// Creates a function with the given name and returns a JitFunction for the
    /// new function.
-   pub fn function<'x>(&'x mut self, name: String) -> JitFunction<'a> {
-      let len = self.funcs.len();
-      let pos =
-         if self.funcs.is_empty() {
-            0
-         } else {
-            let oldfn = &self.funcs[len - 1];
-            oldfn.label.pos + oldfn.len()
-         };
-      let jit: *mut Jit<'a> = self;
-      JitFunction::new(name, Some(jit), pos)
+   pub fn function(&'b mut self, name: String) -> JitFunction<'a, 'b> {
+      let pos = match self.last_func {
+         Some(func) => func.label.pos + func.len(),
+         None => 0
+      };
+      JitFunction::new(name, Some(self), pos)
    }
 
    /// Tries to find and return the function with the given name.  If there is
    /// no function with the given name, None will be returned.
-   pub fn find_function<'x>(&'a self, name: &str) -> Option<&'x JitFunction<'a>> {
-      // TODO: redesign so don't have to iterate through an array
-      for func in self.funcs.iter() {
-         let fname: &str = func.label.name.as_slice();
-         if fname == name {
-            return Some(func);
-         }
-      }
-      None
+   pub fn find_function(&'a self, name: &str) -> Option<&'b JitFunction<'a, 'b>> {
+      self.funcs.get(name)
    }
 
    /// Compiles the code that has been given to the JIT so far and returns the
@@ -129,7 +120,7 @@ impl<'a> Jit<'a> {
    pub fn compile(&'a self) -> Vec<u8> {
       let mut vec = vec!();
       let mut pos = 0;
-      for func in self.funcs.iter() {
+      for func in self.funcs.values() {
          let comp = func.compile(self, pos);
          pos += comp.len();
          vec.extend(comp.into_iter());
@@ -140,8 +131,7 @@ impl<'a> Jit<'a> {
    /// Generates a memory mapped region for the executable code to be placed.
    /// The returned region will be invalidated if this function is called again.
    pub fn region(&'a mut self) -> &mut os::MemoryMap {
-      let this: &'a Jit<'a> = unsafe { ::std::mem::transmute_copy(&self) };      // Get the borrow checker to shut up
-      let code = this.compile();
+      let code = self.compile();
       let mut region = match os::MemoryMap::new(code.len(), &[os::MapReadable, os::MapWritable]) {
          Ok(m) => m,
          Err(f) => panic!(f)
@@ -154,8 +144,8 @@ impl<'a> Jit<'a> {
 }
 
 #[experimental]
-impl<'a> JitFunction<'a> {
-   pub fn new(name: String, jit: Option<*mut Jit<'a>>, pos: uint) -> JitFunction<'a> {
+impl<'a, 'b> JitFunction<'a, 'b> {
+   pub fn new(name: String, jit: Option<&'b mut Jit<'a, 'b>>, pos: uint) -> JitFunction<'a, 'b> {
       JitFunction {
          label: JitLabel::new(name, pos),
          sublabels: vec!(),
@@ -165,7 +155,7 @@ impl<'a> JitFunction<'a> {
       }
    }
 
-   pub fn op(mut self, op: JitOp<'a>) -> JitOpcode<'a> {
+   pub fn op(mut self, op: JitOp<'a>) -> JitOpcode<'a, 'b> {
       self.len += op.len();
       self.ops.push(op);
       JitOpcode::new(self, op)
@@ -180,7 +170,10 @@ impl<'a> JitFunction<'a> {
       self.ops.push(JitOp::Ret);
       let jit = self.jit.unwrap();
       self.jit = None;
-      unsafe { (*jit).funcs.push(self) };
+      let name = self.label.name.clone();
+      let name_clone = name.clone();
+      jit.funcs.insert(name, self);
+      jit.last_func = jit.funcs.get(&name_clone);
    }
 
    pub fn len(&self) -> uint { self.len }
@@ -197,15 +190,15 @@ impl JitLabel {
 }
 
 #[experimental]
-impl<'a> JitOpcode<'a> {
-   pub fn new(func: JitFunction<'a>, op: JitOp<'a>) -> JitOpcode<'a> {
+impl<'a, 'b> JitOpcode<'a, 'b> {
+   pub fn new(func: JitFunction<'a, 'b>, op: JitOp<'a>) -> JitOpcode<'a, 'b> {
       JitOpcode {
          func: func,
          op: op
       }
    }
 
-   pub fn op(self, op: JitOp<'a>) -> JitOpcode<'a> {
+   pub fn op(self, op: JitOp<'a>) -> JitOpcode<'a, 'b> {
       self.func.op(op)
    }
 
@@ -215,6 +208,6 @@ impl<'a> JitOpcode<'a> {
 }
 
 #[experimental]
-impl<'a> Opcode for JitOpcode<'a> {
+impl<'a, 'b> Opcode for JitOpcode<'a, 'b> {
    fn len(&self) -> uint { self.op.len() }
 }

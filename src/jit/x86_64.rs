@@ -5,8 +5,8 @@ use super::{Compilable, Opcode, Register, Jit, JitFunction, JitOp, JitReg};
 static RET: u8 = 0xc3;
 
 #[experimental]
-impl<'a> Compilable<'a> for JitFunction<'a> {
-   fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8> {
+impl<'a, 'b> Compilable<'a, 'b> for JitFunction<'a, 'b> {
+   fn compile(&self, jit: &'a Jit<'a, 'b>, pos: uint) -> Vec<u8> {
       let mut vec = vec!();
       let mut pos = pos;
       for op in self.ops.iter() {
@@ -53,8 +53,8 @@ impl<'a> Opcode for JitOp<'a> {
 }
 
 #[experimental]
-impl<'a> Compilable<'a> for JitOp<'a> {
-   fn compile(&self, jit: &'a Jit<'a>, pos: uint) -> Vec<u8> {
+impl<'a, 'b> Compilable<'a, 'b> for JitOp<'a> {
+   fn compile(&self, jit: &'a Jit<'a, 'b>, pos: uint) -> Vec<u8> {
       match *self {
          JitOp::Addri(reg, imm) => encode_addri(reg, imm),
          JitOp::Subri(reg, imm) => encode_subri(reg, imm),
@@ -231,7 +231,7 @@ fn encode_movri(reg: JitReg, imm: u64) -> Vec<u8> {
 }
 
 #[inline]
-fn encode_call<'a>(func: Option<&'a JitFunction<'a>>, pos: uint) -> Vec<u8> {
+fn encode_call<'a, 'b>(func: Option<&'b JitFunction<'a, 'b>>, pos: uint) -> Vec<u8> {
    match func {
       Some(func) => {
          let mut pos = func.label.pos as i32 - pos as i32;

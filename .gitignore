@@ -5,6 +5,7 @@
 /rust-jit-macros
 /Cargo.lock
 /target
+/asm
 *~
 .*.swp
 .*.swo
